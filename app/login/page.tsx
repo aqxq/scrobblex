@@ -1,15 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Music, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Music } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
 
 export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -17,20 +16,23 @@ export default function LoginPage() {
     const errorParam = searchParams.get("error")
     if (errorParam) {
       switch (errorParam) {
-        case "invalid_token":
-          setError("Invalid authentication token. Please try again.")
-          break
         case "no_token":
-          setError("No authentication token received. Please try again.")
+          setError("No authentication token received from Last.fm")
+          break
+        case "invalid_token":
+          setError("Invalid authentication token from Last.fm")
           break
         case "user_info_failed":
-          setError("Failed to retrieve user information from Last.fm.")
+          setError("Failed to retrieve user information from Last.fm")
           break
         case "database_error":
-          setError("Database error occurred. Please try again later.")
+          setError("Database connection error. Please try again.")
           break
         case "server_error":
-          setError("Server error occurred. Please try again later.")
+          setError("Server error occurred. Please try again.")
+          break
+        case "callback_failed":
+          setError("Authentication callback failed. Please try again.")
           break
         default:
           setError("Authentication failed. Please try again.")
@@ -39,10 +41,10 @@ export default function LoginPage() {
   }, [searchParams])
 
   const handleLastFmLogin = async () => {
-    setIsLoading(true)
-    setError("")
-
     try {
+      setIsLoading(true)
+      setError(null)
+
       const response = await fetch("/api/auth/lastfm/start", {
         method: "POST",
         headers: {
@@ -50,12 +52,10 @@ export default function LoginPage() {
         },
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        window.location.href = data.authUrl
-      } else {
-        const errorData = await response.json()
-        setError(errorData.error || "Failed to start authentication")
+      if (response.redirected) {
+        window.location.href = response.url
+      } else if (!response.ok) {
+        throw new Error("Failed to start authentication")
       }
     } catch (error) {
       console.error("Login error:", error)
@@ -66,34 +66,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center">
-              <Music className="w-8 h-8 text-white" />
+            <div className="bg-purple-600 p-3 rounded-full">
+              <Music className="h-8 w-8 text-white" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-white">ScrobbleX</h1>
-          <p className="text-slate-400 mt-2">Trade your favorite artists like stocks</p>
+          <h1 className="text-4xl font-bold text-white mb-2">ScrobbleX</h1>
+          <p className="text-gray-300">Trade your favorite artists like stocks</p>
         </div>
 
-        {error && (
-          <Alert className="border-red-500/50 bg-red-500/10">
-            <AlertDescription className="text-red-400">{error}</AlertDescription>
-          </Alert>
-        )}
-
-        <Card className="bg-slate-900 border-slate-800">
+        <Card className="bg-gray-800/50 border-gray-700">
           <CardHeader className="text-center">
             <CardTitle className="text-white">Welcome Back</CardTitle>
-            <CardDescription className="text-slate-400">Connect your Last.fm account to start trading</CardDescription>
+            <CardDescription className="text-gray-400">Connect your Last.fm account to start trading</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
+            )}
+
             <Button
               onClick={handleLastFmLogin}
               disabled={isLoading}
               className="w-full bg-red-600 hover:bg-red-700 text-white"
+              size="lg"
             >
               {isLoading ? (
                 <div className="flex items-center space-x-2">
@@ -101,14 +102,14 @@ export default function LoginPage() {
                   <span>Connecting...</span>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2">
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Continue with Last.fm</span>
-                </div>
+                <>
+                  <Music className="mr-2 h-4 w-4" />
+                  Continue with Last.fm
+                </>
               )}
             </Button>
 
-            <p className="text-xs text-slate-500 text-center">
+            <p className="text-center text-sm text-gray-400">
               Don't have a Last.fm account?{" "}
               <a
                 href="https://www.last.fm/join"
@@ -122,25 +123,25 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          <Card className="bg-slate-900/50 border-slate-800">
+        <div className="grid grid-cols-1 gap-4 text-center">
+          <Card className="bg-gray-800/30 border-gray-700">
             <CardContent className="p-4">
               <h3 className="text-white font-semibold mb-2">Real Music Data</h3>
-              <p className="text-slate-400 text-sm">Stock prices based on actual Last.fm listening statistics</p>
+              <p className="text-gray-400 text-sm">Stock prices based on actual Last.fm listening statistics</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900/50 border-slate-800">
+          <Card className="bg-gray-800/30 border-gray-700">
             <CardContent className="p-4">
               <h3 className="text-white font-semibold mb-2">Trade Artists</h3>
-              <p className="text-slate-400 text-sm">Buy and sell shares of your favorite musicians</p>
+              <p className="text-gray-400 text-sm">Buy and sell shares of your favorite musicians</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-slate-900/50 border-slate-800">
+          <Card className="bg-gray-800/30 border-gray-700">
             <CardContent className="p-4">
               <h3 className="text-white font-semibold mb-2">Compete</h3>
-              <p className="text-slate-400 text-sm">Climb the leaderboard and show off your music taste</p>
+              <p className="text-gray-400 text-sm">Climb the leaderboard and show off your music taste</p>
             </CardContent>
           </Card>
         </div>

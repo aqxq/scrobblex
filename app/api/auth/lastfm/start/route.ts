@@ -1,26 +1,24 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { lastfmAPI } from "@/lib/lastfm"
 
-export async function POST() {
+export async function GET(request: NextRequest) {
   try {
-    console.log("Starting Last.fm authentication flow...")
+    const callbackUrl =
+      process.env.NEXT_PUBLIC_LASTFM_CALLBACK_URL || `${request.nextUrl.origin}/api/auth/lastfm/callback`
 
-    const authUrl = lastfmAPI.generateAuthUrl()
-    console.log("Generated Last.fm auth URL:", authUrl)
+    console.log("Starting Last.fm auth with callback:", callbackUrl)
 
-    return NextResponse.json({ authUrl })
+    const authUrl = await lastfmAPI.getAuthUrl(callbackUrl)
+
+    console.log("Redirecting to Last.fm auth URL:", authUrl)
+
+    return NextResponse.redirect(authUrl)
   } catch (error) {
     console.error("Error starting Last.fm auth:", error)
     return NextResponse.json({ error: "Failed to start authentication" }, { status: 500 })
   }
 }
 
-export async function GET() {
-  try {
-    const authUrl = lastfmAPI.generateAuthUrl()
-    return NextResponse.redirect(authUrl)
-  } catch (error) {
-    console.error("Error in GET auth start:", error)
-    return NextResponse.json({ error: "Failed to start authentication" }, { status: 500 })
-  }
+export async function POST(request: NextRequest) {
+  return GET(request)
 }

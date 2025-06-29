@@ -1,78 +1,72 @@
 import crypto from "crypto"
 
-const LASTFM_API_KEY = process.env.LASTFM_API_KEY!
-const LASTFM_SECRET = process.env.LASTFM_SECRET!
-const LASTFM_CALLBACK_URL = process.env.LASTFM_CALLBACK_URL!
-
-export interface LastFmUser {
+interface LastFmSession {
   name: string
-  realname: string
-  image: Array<{ "#text": string; size: string }>
+  key: string
+  subscriber: string
+}
+
+interface LastFmUserInfo {
+  name: string
+  realname?: string
   playcount: string
-  registered: { unixtime: string }
   country?: string
-  age?: string
-  gender?: string
-  subscriber?: string
-  url?: string
+  image?: Array<{
+    "#text": string
+    size: string
+  }>
+  registered?: {
+    unixtime: string
+  }
 }
 
-export interface LastFmTrack {
+interface LastFmTrack {
   name: string
-  artist: { "#text": string }
-  date?: { uts: string }
-  url?: string
-  image?: Array<{ "#text": string; size: string }>
+  artist: {
+    "#text": string
+  }
+  album?: {
+    "#text": string
+  }
+  "@attr"?: {
+    nowplaying?: string
+  }
 }
 
-export interface LastFmArtist {
-  name: string
-  playcount: string
-  url: string
-  image?: Array<{ "#text": string; size: string }>
-}
-
-export class LastFmAPI {
+class LastFmAPI {
   private apiKey: string
   private secret: string
+  private baseUrl = "https://ws.audioscrobbler.com/2.0/"
 
   constructor() {
-    if (!LASTFM_API_KEY || !LASTFM_SECRET || !LASTFM_CALLBACK_URL) {
-      throw new Error("Missing required Last.fm environment variables")
-    }
+    this.apiKey = process.env.NEXT_PUBLIC_LASTFM_API_KEY || process.env.LASTFM_API_KEY || ""
+    this.secret = process.env.LASTFM_SECRET || ""
 
-    this.apiKey = LASTFM_API_KEY
-    this.secret = LASTFM_SECRET
+    if (!this.apiKey) {
+      throw new Error("Last.fm API key is required")
+    }
+    if (!this.secret) {
+      throw new Error("Last.fm secret is required")
+    }
   }
 
   private generateSignature(params: Record<string, string>): string {
     const sortedKeys = Object.keys(params).sort()
-    let signatureString = ""
-
-    for (const key of sortedKeys) {
-      signatureString += key + params[key]
-    }
-
-    signatureString += this.secret
-
+    const paramString = sortedKeys.map((key) => `${key}${params[key]}`).join("")
+    const signatureString = paramString + this.secret
     return crypto.createHash("md5").update(signatureString, "utf8").digest("hex")
   }
 
-  generateAuthUrl(): string {
-    console.log("Generating auth URL with callback:", LASTFM_CALLBACK_URL)
-
+  async getAuthUrl(callbackUrl: string): Promise<string> {
     const params = new URLSearchParams({
       api_key: this.apiKey,
-      cb: LASTFM_CALLBACK_URL,
+      cb: callbackUrl,
     })
 
-    const authUrl = `http://www.last.fm/api/auth/?${params.toString()}`
-    console.log("Generated auth URL:", authUrl)
-
-    return authUrl
+    return `https://www.last.fm/api/auth/?${params.toString()}`
   }
 
-  async getSession(token: string): Promise<{ key: string; name: string } | null> {
+  async getSession(token: string): Promise<LastFmSession | null> {
     try {
       const params = {
         method: "auth.getSession",
@@ -82,36 +76,33 @@ export class LastFmAPI {
 
       const signature = this.generateSignature(params)
 
-      const urlParams = new URLSearchParams({
-        ...params,
-        api_sig: signature,
-        format: "json",
+      const response = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          ...params,
+          api_sig: signature,
+          format: "json",
+        }),
       })
 
-      console.log("Making Last.fm getSession request...")
-
-      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${urlParams.toString()}`)
       const data = await response.json()
-
-      if (data.session) {
-        return {
-          key: data.session.key,
-          name: data.session.name,
-        }
-      }
 
       if (data.error) {
         console.error("Last.fm API error:", data.error, data.message)
+        return null
       }
 
-      return null
+      return data.session
     } catch (error) {
-      console.error("Last.fm session error:", error)
+      console.error("Error getting Last.fm session:", error)
       return null
     }
   }
 
-  async getUserInfo(username: string): Promise<LastFmUser | null> {
+  async getUserInfo(username: string): Promise<LastFmUserInfo | null> {
     try {
       const params = new URLSearchParams({
         method: "user.getInfo",
@@ -120,12 +111,17 @@ export class LastFmAPI {
         format: "json",
       })
 
-      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${params.toString()}`)
+      const response = await fetch(`${this.baseUrl}?${params.toString()}`)
       const data = await response.json()
 
-      return data.user || null
+      if (data.error) {
+        console.error("Last.fm API error:", data.error, data.message)
+        return null
+      }
+
+      return data.user
     } catch (error) {
-      console.error("Last.fm user info error:", error)
+      console.error("Error getting user info:", error)
       return null
     }
   }
@@ -136,61 +132,47 @@ export class LastFmAPI {
         method: "user.getRecentTracks",
         user: username,
         api_key: this.apiKey,
-        format: "json",
         limit: limit.toString(),
+        format: "json",
       })
 
-      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${params.toString()}`)
+      const response = await fetch(`${this.baseUrl}?${params.toString()}`)
       const data = await response.json()
+
+      if (data.error) {
+        console.error("Last.fm API error:", data.error, data.message)
+        return []
+      }
 
       return data.recenttracks?.track || []
     } catch (error) {
-      console.error("Last.fm recent tracks error:", error)
+      console.error("Error getting recent tracks:", error)
       return []
     }
   }
 
-  async getTopArtists(username: string, limit = 10): Promise<LastFmArtist[]> {
+  async getTopArtists(username: string, period = "overall", limit = 50): Promise<any[]> {
     try {
       const params = new URLSearchParams({
         method: "user.getTopArtists",
         user: username,
         api_key: this.apiKey,
-        format: "json",
+        period: period,
         limit: limit.toString(),
-        period: "overall",
+        format: "json",
       })
 
-      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${params.toString()}`)
+      const response = await fetch(`${this.baseUrl}?${params.toString()}`)
       const data = await response.json()
+
+      if (data.error) {
+        console.error("Last.fm API error:", data.error, data.message)
+        return []
+      }
 
       return data.topartists?.artist || []
     } catch (error) {
-      console.error("Last.fm top artists error:", error)
-      return []
-    }
-  }
-
-  async getTopTracks(): Promise<Array<{ name: string; artist: string }>> {
-    try {
-      const params = new URLSearchParams({
-        method: "chart.getTopTracks",
-        api_key: this.apiKey,
-        format: "json",
-        limit: "50",
-      })
-
-      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${params.toString()}`)
-      const data = await response.json()
-
-      return (
-        data.tracks?.track?.map((track: any) => ({
-          name: track.name,
-          artist: track.artist.name,
-        })) || []
-      )
-    } catch (error) {
-      console.error("Last.fm top tracks error:", error)
+      console.error("Error getting top artists:", error)
       return []
     }
   }

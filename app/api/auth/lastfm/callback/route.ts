@@ -17,6 +17,11 @@ export async function GET(request: NextRequest) {
 
     console.log("Processing Last.fm callback with token:", token.substring(0, 10) + "...")
 
+    if (!supabaseAdmin) {
+      console.error("Supabase admin client not available")
+      return NextResponse.redirect(new URL("/login?error=database_error", request.url))
+    }
+
     const session = await lastfmAPI.getSession(token)
     if (!session) {
       console.error("Failed to get Last.fm session")
@@ -119,7 +124,7 @@ export async function GET(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
     })
 
     return response

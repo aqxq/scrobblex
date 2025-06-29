@@ -12,6 +12,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
+    if (!supabaseAdmin) {
+      console.error("Supabase admin client not available")
+      return NextResponse.json({ error: "Database connection error" }, { status: 500 })
+    }
+
     const decoded = jwt.verify(token, JWT_SECRET) as any
 
     const { data: user, error } = await supabaseAdmin.from("users").select("*").eq("id", decoded.userId).single()
