@@ -10,9 +10,8 @@ export async function GET(request: NextRequest) {
 
     const authUrl = await lastfmAPI.getAuthUrl(callbackUrl)
 
-    console.log("Redirecting to Last.fm auth URL:", authUrl)
-
-    return NextResponse.redirect(authUrl)
+    console.log("Generated Last.fm auth URL:", authUrl)
+    return NextResponse.json({ authUrl })
   } catch (error) {
     console.error("Error starting Last.fm auth:", error)
     return NextResponse.json({ error: "Failed to start authentication" }, { status: 500 })

@@ -45,6 +45,8 @@ export default function LoginPage() {
       setIsLoading(true)
       setError(null)
 
+      console.log("Starting Last.fm authentication...")
+
       const response = await fetch("/api/auth/lastfm/start", {
         method: "POST",
         headers: {
@@ -52,14 +54,22 @@ export default function LoginPage() {
         },
       })
 
-      if (response.redirected) {
-        window.location.href = response.url
-      } else if (!response.ok) {
-        throw new Error("Failed to start authentication")
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to start authentication")
+      }
+
+      const data = await response.json()
+
+      if (data.authUrl) {
+        console.log("Redirecting to Last.fm auth URL:", data.authUrl)
+        window.location.href = data.authUrl
+      } else {
+        throw new Error("No auth URL received from server")
       }
     } catch (error) {
       console.error("Login error:", error)
-      setError("Failed to connect to authentication service.")
+      setError(error instanceof Error ? error.message : "Failed to connect to authentication service.")
     } finally {
       setIsLoading(false)
     }

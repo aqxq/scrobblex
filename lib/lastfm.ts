@@ -43,11 +43,17 @@ class LastFmAPI {
     this.secret = process.env.LASTFM_SECRET || ""
 
     if (!this.apiKey) {
+      console.error(
+        "Last.fm API key is missing. Please set NEXT_PUBLIC_LASTFM_API_KEY or LASTFM_API_KEY environment variable.",
+      )
       throw new Error("Last.fm API key is required")
     }
     if (!this.secret) {
+      console.error("Last.fm secret is missing. Please set LASTFM_SECRET environment variable.")
       throw new Error("Last.fm secret is required")
     }
+
+    console.log("Last.fm API initialized with key:", this.apiKey.substring(0, 8) + "...")
   }
 
   private generateSignature(params: Record<string, string>): string {
@@ -58,16 +64,23 @@ class LastFmAPI {
   }
 
   async getAuthUrl(callbackUrl: string): Promise<string> {
+    console.log("Generating Last.fm auth URL with callback:", callbackUrl)
+
     const params = new URLSearchParams({
       api_key: this.apiKey,
       cb: callbackUrl,
     })
 
-    return `https://www.last.fm/api/auth/?${params.toString()}`
+    const authUrl = `https://www.last.fm/api/auth/?${params.toString()}`
+    console.log("Generated auth URL:", authUrl)
+
+    return authUrl
   }
 
   async getSession(token: string): Promise<LastFmSession | null> {
     try {
+      console.log("Getting Last.fm session for token:", token.substring(0, 10) + "...")
+
       const params = {
         method: "auth.getSession",
         api_key: this.apiKey,
@@ -95,6 +108,7 @@ class LastFmAPI {
         return null
       }
 
+      console.log("Successfully got Last.fm session for user:", data.session?.name)
       return data.session
     } catch (error) {
       console.error("Error getting Last.fm session:", error)
@@ -104,6 +118,8 @@ class LastFmAPI {
 
   async getUserInfo(username: string): Promise<LastFmUserInfo | null> {
     try {
+      console.log("Getting user info for:", username)
+
       const params = new URLSearchParams({
         method: "user.getInfo",
         user: username,
@@ -119,6 +135,7 @@ class LastFmAPI {
         return null
       }
 
+      console.log("Successfully got user info for:", username)
       return data.user
     } catch (error) {
       console.error("Error getting user info:", error)
