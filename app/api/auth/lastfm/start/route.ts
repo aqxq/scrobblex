@@ -3,23 +3,24 @@ import { lastfmAPI } from "@/lib/lastfm"
 
 export async function POST() {
   try {
-    console.log("Starting Last.fm authentication process...")
-
-    if (!process.env.LASTFM_API_KEY || !process.env.LASTFM_SECRET || !process.env.LASTFM_CALLBACK_URL) {
-      console.error("Missing Last.fm environment variables")
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 })
-    }
+    console.log("Starting Last.fm authentication flow...")
 
     const authUrl = lastfmAPI.generateAuthUrl()
     console.log("Generated Last.fm auth URL:", authUrl)
 
     return NextResponse.json({ authUrl })
   } catch (error) {
-    console.error("Last.fm auth start error:", error)
+    console.error("Error starting Last.fm auth:", error)
     return NextResponse.json({ error: "Failed to start authentication" }, { status: 500 })
   }
 }
 
 export async function GET() {
-  return POST()
+  try {
+    const authUrl = lastfmAPI.generateAuthUrl()
+    return NextResponse.redirect(authUrl)
+  } catch (error) {
+    console.error("Error in GET auth start:", error)
+    return NextResponse.json({ error: "Failed to start authentication" }, { status: 500 })
+  }
 }

@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/login?error=invalid_token", request.url))
     }
 
-    console.log("Last.fm session obtained for user:", session.name)
+    console.log("Last.fm session obtained!")
+    console.log("Username:", session.name)
+    console.log("Session key:", session.key.substring(0, 10) + "...")
 
     const userInfo = await lastfmAPI.getUserInfo(session.name)
     if (!userInfo) {
@@ -31,7 +33,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL("/login?error=user_info_failed", request.url))
     }
 
-    console.log("User info obtained for:", session.name)
+    console.log("Last.fm User Data Retrieved:")
+    console.log("Username:", userInfo.name)
+    console.log("Real Name:", userInfo.realname || "Not provided")
+    console.log("Total Scrobbles:", userInfo.playcount)
+    console.log("Member Since:", new Date(Number.parseInt(userInfo.registered.unixtime) * 1000).toLocaleDateString())
+    console.log("Profile Images:", userInfo.image?.length || 0, "available")
+
+    const recentTracks = await lastfmAPI.getRecentTracks(session.name, 5)
+    console.log("Recent Tracks:")
+    recentTracks.forEach((track, index) => {
+      console.log(`  ${index + 1}. ${track.artist["#text"]} - ${track.name}`)
+    })
 
     let user = await db.getUserByLastFm(session.name)
 
@@ -45,18 +58,26 @@ export async function GET(request: NextRequest) {
         balance: 10000,
         is_admin: false,
       })
+      console.log("New user created with ID:", user.id)
     } else {
       console.log("Existing user found:", user.id)
+      await db.updateUser(user.id, {
+        display_name: userInfo.realname || session.name,
+      })
     }
 
     await db.createLastFmProfile({
       user_id: user.id,
       lastfm_username: session.name,
       access_token: session.key,
-      profile_data: userInfo,
+      profile_data: {
+        ...userInfo,
+        recentTracks: recentTracks,
+        lastUpdated: new Date().toISOString(),
+      },
     })
 
-    console.log("Last.fm profile created/updated for user:", user.id)
+    console.log("Last.fm profile data saved to database")
 
     const jwtToken = signJWT({
       userId: user.id,
@@ -68,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     await setAuthCookie(jwtToken)
 
-    console.log("Authentication successful, redirecting to home")
+    console.log("Authentication successful! Redirecting to dashboard...")
     return NextResponse.redirect(new URL("/", request.url))
   } catch (error) {
     console.error("Last.fm callback error:", error)

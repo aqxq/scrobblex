@@ -10,12 +10,26 @@ export interface LastFmUser {
   image: Array<{ "#text": string; size: string }>
   playcount: string
   registered: { unixtime: string }
+  country?: string
+  age?: string
+  gender?: string
+  subscriber?: string
+  url?: string
 }
 
 export interface LastFmTrack {
   name: string
   artist: { "#text": string }
   date?: { uts: string }
+  url?: string
+  image?: Array<{ "#text": string; size: string }>
+}
+
+export interface LastFmArtist {
+  name: string
+  playcount: string
+  url: string
+  image?: Array<{ "#text": string; size: string }>
 }
 
 export class LastFmAPI {
@@ -74,21 +88,10 @@ export class LastFmAPI {
         format: "json",
       })
 
-      console.log("Making Last.fm getSession request with params:", {
-        method: params.method,
-        api_key: params.api_key,
-        token: token.substring(0, 10) + "...",
-        api_sig: signature.substring(0, 10) + "...",
-      })
+      console.log("Making Last.fm getSession request...")
 
       const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${urlParams.toString()}`)
       const data = await response.json()
-
-      console.log("Last.fm getSession response:", {
-        success: !!data.session,
-        error: data.error,
-        message: data.message,
-      })
 
       if (data.session) {
         return {
@@ -143,6 +146,27 @@ export class LastFmAPI {
       return data.recenttracks?.track || []
     } catch (error) {
       console.error("Last.fm recent tracks error:", error)
+      return []
+    }
+  }
+
+  async getTopArtists(username: string, limit = 10): Promise<LastFmArtist[]> {
+    try {
+      const params = new URLSearchParams({
+        method: "user.getTopArtists",
+        user: username,
+        api_key: this.apiKey,
+        format: "json",
+        limit: limit.toString(),
+        period: "overall",
+      })
+
+      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${params.toString()}`)
+      const data = await response.json()
+
+      return data.topartists?.artist || []
+    } catch (error) {
+      console.error("Last.fm top artists error:", error)
       return []
     }
   }
