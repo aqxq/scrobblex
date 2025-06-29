@@ -1,3 +1,5 @@
+import crypto from "crypto"
+
 const LASTFM_API_KEY = process.env.LASTFM_API_KEY!
 const LASTFM_SECRET = process.env.LASTFM_SECRET!
 const LASTFM_CALLBACK_URL = process.env.LASTFM_CALLBACK_URL!
@@ -21,29 +23,72 @@ export class LastFmAPI {
   private secret: string
 
   constructor() {
+    if (!LASTFM_API_KEY || !LASTFM_SECRET || !LASTFM_CALLBACK_URL) {
+      throw new Error("Missing required Last.fm environment variables")
+    }
+
     this.apiKey = LASTFM_API_KEY
     this.secret = LASTFM_SECRET
   }
 
+  private generateSignature(params: Record<string, string>): string {
+    const sortedKeys = Object.keys(params).sort()
+    let signatureString = ""
+
+    for (const key of sortedKeys) {
+      signatureString += key + params[key]
+    }
+
+    signatureString += this.secret
+
+    return crypto.createHash("md5").update(signatureString, "utf8").digest("hex")
+  }
+
   generateAuthUrl(): string {
+    console.log("Generating auth URL with callback:", LASTFM_CALLBACK_URL)
+
     const params = new URLSearchParams({
       api_key: this.apiKey,
       cb: LASTFM_CALLBACK_URL,
     })
-    return `http://www.last.fm/api/auth/?${params.toString()}`
+
+    const authUrl = `http://www.last.fm/api/auth/?${params.toString()}`
+    console.log("Generated auth URL:", authUrl)
+
+    return authUrl
   }
 
   async getSession(token: string): Promise<{ key: string; name: string } | null> {
     try {
-      const params = new URLSearchParams({
+      const params = {
         method: "auth.getSession",
         api_key: this.apiKey,
-        token,
+        token: token,
+      }
+
+      const signature = this.generateSignature(params)
+
+      const urlParams = new URLSearchParams({
+        ...params,
+        api_sig: signature,
         format: "json",
       })
 
-      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${params.toString()}`)
+      console.log("Making Last.fm getSession request with params:", {
+        method: params.method,
+        api_key: params.api_key,
+        token: token.substring(0, 10) + "...",
+        api_sig: signature.substring(0, 10) + "...",
+      })
+
+      const response = await fetch(`http://ws.audioscrobbler.com/2.0/?${urlParams.toString()}`)
       const data = await response.json()
+
+      console.log("Last.fm getSession response:", {
+        success: !!data.session,
+        error: data.error,
+        message: data.message,
+      })
 
       if (data.session) {
         return {
@@ -51,6 +96,11 @@ export class LastFmAPI {
           name: data.session.name,
         }
       }
+
+      if (data.error) {
+        console.error("Last.fm API error:", data.error, data.message)
+      }
+
       return null
     } catch (error) {
       console.error("Last.fm session error:", error)
