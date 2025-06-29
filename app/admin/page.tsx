@@ -68,11 +68,11 @@ export default function AdminPage() {
   const router = useRouter()
 
   useEffect(() => {
-   // checkAdminAccess()
+    checkAdminAccess()
     fetchDashboardData()
   }, [])
 
-  /*const checkAdminAccess = async () => {
+  const checkAdminAccess = async () => {
     try {
       const response = await fetch("/api/auth/verify", {
         credentials: "include",
@@ -91,7 +91,7 @@ export default function AdminPage() {
     } catch (error) {
       router.push("/login")
     }
-  }*/ //Commenting this out until i implement auth
+  }
 
   const fetchDashboardData = async () => {
     try {
@@ -189,7 +189,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* Header */}
       <div className="border-b border-slate-800 p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -200,19 +199,16 @@ export default function AdminPage() {
           </Button>
         </div>
       </div>
-
-      {/* Navigation */}
       <div className="border-b border-slate-800">
         <nav className="flex space-x-8 px-6">
           {["dashboard", "users", "stocks", "transactions"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`py-4 px-2 border-b-2 font-medium text-sm capitalize ${
-                activeTab === tab
+              className={`py-4 px-2 border-b-2 font-medium text-sm capitalize ${activeTab === tab
                   ? "border-purple-500 text-purple-400"
                   : "border-transparent text-slate-400 hover:text-white"
-              }`}
+                }`}
             >
               {tab}
             </button>
@@ -223,7 +219,6 @@ export default function AdminPage() {
       <div className="p-6">
         {activeTab === "dashboard" && (
           <div className="space-y-6">
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="bg-slate-900 border-slate-800">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

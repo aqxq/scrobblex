@@ -21,22 +21,23 @@ export default function LoginPage() {
     }
   }, [searchParams, router])
 
-  const handleLastfmLogin = async () => {
+  const handleLastFmLogin = async () => {
     setIsLoading(true)
     setError("")
 
     try {
-      const response = await fetch("/api/auth/lastfm", {
-        credentials: "include",
+      const response = await fetch("/api/auth/lastfm/start", {
+        method: "POST",
       })
+      const data = await response.json()
 
-      if (response.ok) {
-        // This will redirect to Last.fm
-        window.location.href = "/api/auth/lastfm"
+      if (data.authUrl) {
+        window.location.href = data.authUrl
       } else {
-        throw new Error("Failed to initiate authentication")
+        throw new Error("No auth URL received.")
       }
     } catch (err) {
+      console.error("Login error:", err)
       setError("Failed to connect to Last.fm. Please try again.")
       setIsLoading(false)
     }
@@ -45,7 +46,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
-        {/* Logo */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center">
@@ -55,20 +55,22 @@ export default function LoginPage() {
           </div>
           <p className="text-slate-400">Trade your favorite artists like stocks</p>
         </div>
-
-        {/* Login Card */}
         <Card className="bg-slate-900 border-slate-800">
           <CardHeader className="text-center">
             <CardTitle className="text-white">Welcome Back</CardTitle>
-            <CardDescription className="text-slate-400">Connect your Last.fm account to start trading</CardDescription>
+            <CardDescription className="text-slate-400">
+              Connect your Last.fm account to start trading
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                {error}
+              </div>
             )}
 
             <Button
-              onClick={handleLastfmLogin}
+              onClick={handleLastFmLogin}
               disabled={isLoading}
               className="w-full bg-red-600 hover:bg-red-700 text-white"
               size="lg"
@@ -88,7 +90,7 @@ export default function LoginPage() {
 
             <div className="text-center text-sm text-slate-400">
               <p>
-                Don't have a Last.fm account?{" "}
+                Don&apos;t have a Last.fm account?{" "}
                 <a
                   href="https://www.last.fm/join"
                   target="_blank"
@@ -101,8 +103,6 @@ export default function LoginPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Features */}
         <div className="grid grid-cols-1 gap-4 text-center">
           <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-800">
             <h3 className="font-semibold text-white mb-2">Real Music Data</h3>
