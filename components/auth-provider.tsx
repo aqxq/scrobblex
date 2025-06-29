@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
 
 interface User {
@@ -10,11 +9,17 @@ interface User {
   lastfmUsername?: string
   lastfmVerified: boolean
   balance: number
+  scrobbleCoins: number
+  totalScrobbles: number
+  profileImageUrl?: string
   isAdmin: boolean
 }
 
 interface Portfolio {
   totalValue: number
+  totalInvested: number
+  gainLoss: number
+  gainLossPercent: number
   cashBalance: number
   totalAssets: number
   positions: Array<{
@@ -25,6 +30,7 @@ interface Portfolio {
     totalValue: number
     gainLoss: number
     gainLossPercent: number
+    artistImage?: string
   }>
 }
 

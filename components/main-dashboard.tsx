@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useAuth } from "@/components/auth-provider"
 import Sidebar from "@/components/sidebar"
 import Header from "@/components/header"
 import Dashboard from "@/components/dashboard"
@@ -9,10 +9,7 @@ import Market from "@/components/market"
 import Portfolio from "@/components/portfolio"
 import Leaderboard from "@/components/leaderboard"
 import TradeModal from "@/components/trade-modal"
-import { useUserData } from "@/hooks/use-user-data"
-import { useStockData } from "@/hooks/use-stock-data"
 import { Notification } from "@/components/notification"
-import { useAuth } from "@/components/auth-provider"
 
 export type Page = "dashboard" | "market" | "portfolio" | "leaderboard"
 
@@ -26,71 +23,21 @@ export interface Stock {
   marketCap: number
 }
 
-export interface Transaction {
-  id: number
-  type: "buy" | "sell"
-  symbol: string
-  name: string
-  shares: number
-  price: number
-  total: number
-  date: string
-  timestamp: number
-}
-
 export interface NotificationItem {
   id: number
   message: string
   type: string
 }
 
-export default function Home() {
+export function MainDashboard() {
+  const { user } = useAuth()
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tradeModalOpen, setTradeModalOpen] = useState(false)
   const [currentTradeStock, setCurrentTradeStock] = useState<Stock | null>(null)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(false)
-
-  const { user, isLoading } = useAuth()
-  const router = useRouter()
-  const {
-    userData,
-    updateBalance,
-    addToPortfolio,
-    removeFromPortfolio,
-    addTransaction,
-    addToWatchlist,
-    removeFromWatchlist,
-  } = useUserData()
-  const { stockData } = useStockData()
-
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push("/login")
-    }
-  }, [user, isLoading, router])
-
-  useEffect(() => {
-    setTimeout(() => {
-      showNotification("Welcome to ScrobbleX!", "success")
-    }, 1000)
-  }, [])
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-center text-white">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-300">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return null
-  }
+  const [stockData, setStockData] = useState<Stock[]>([])
 
   const showNotification = (message: string, type = "info") => {
     const id = Date.now()
@@ -99,6 +46,31 @@ export default function Home() {
       setNotifications((prev) => prev.filter((n) => n.id !== id))
     }, 5000)
   }
+
+  const fetchArtists = async () => {
+    try {
+      const response = await fetch("/api/artists")
+      if (response.ok) {
+        const data = await response.json()
+        const formattedStocks = data.artists.map((artist: any) => ({
+          symbol: artist.name.toUpperCase().replace(/\s+/g, ""),
+          name: artist.name,
+          genre: artist.genre || "Unknown",
+          price: artist.current_price,
+          change: artist.price_change,
+          volume: artist.volume,
+          marketCap: artist.market_cap,
+        }))
+        setStockData(formattedStocks)
+      }
+    } catch (error) {
+      console.error("Error fetching artists:", error)
+    }
+  }
+
+  useEffect(() => {
+    fetchArtists()
+  }, [])
 
   const openStockDetails = (symbol: string) => {
     const stock = stockData.find((s) => s.symbol === symbol)
@@ -109,49 +81,19 @@ export default function Home() {
   }
 
   const executeTrade = async (type: "buy" | "sell", shares: number) => {
-    if (!currentTradeStock) return
+    if (!currentTradeStock || !user) return
 
     const total = shares * currentTradeStock.price
 
-    if (type === "buy" && total > userData.balance) {
+    if (type === "buy" && total > user.balance) {
       showNotification("Insufficient funds", "error")
       return
-    }
-
-    if (type === "sell") {
-      const holding = userData.portfolio.find((h) => h.symbol === currentTradeStock.symbol)
-      if (!holding || holding.shares < shares) {
-        showNotification("Insufficient shares to sell", "error")
-        return
-      }
     }
 
     setLoading(true)
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      const transaction: Transaction = {
-        id: Date.now(),
-        type,
-        symbol: currentTradeStock.symbol,
-        name: currentTradeStock.name,
-        shares,
-        price: currentTradeStock.price,
-        total,
-        date: new Date().toISOString(),
-        timestamp: Date.now(),
-      }
-
-      if (type === "buy") {
-        updateBalance(userData.balance - total)
-        addToPortfolio(currentTradeStock.symbol, shares, currentTradeStock.price)
-      } else {
-        updateBalance(userData.balance + total)
-        removeFromPortfolio(currentTradeStock.symbol, shares)
-      }
-
-      addTransaction(transaction)
 
       setLoading(false)
       setTradeModalOpen(false)
@@ -166,30 +108,17 @@ export default function Home() {
     }
   }
 
-  const quickTrade = (symbol: string, type: "buy" | "sell") => {
-    const stock = stockData.find((s) => s.symbol === symbol)
-    if (!stock) return
-
-    setCurrentTradeStock(stock)
-    setTradeModalOpen(true)
-
-    setTimeout(() => {
-      const event = new CustomEvent("setTradeType", { detail: type })
-      window.dispatchEvent(event)
-    }, 100)
-  }
-
   const renderCurrentPage = () => {
     switch (currentPage) {
       case "dashboard":
         return (
           <Dashboard
             stockData={stockData}
-            userData={userData}
+            userData={user}
             onOpenStock={openStockDetails}
-            onAddToWatchlist={addToWatchlist}
-            onRemoveFromWatchlist={removeFromWatchlist}
-            onQuickTrade={quickTrade}
+            onAddToWatchlist={() => { }}
+            onRemoveFromWatchlist={() => { }}
+            onQuickTrade={() => { }}
             showNotification={showNotification}
           />
         )
@@ -198,28 +127,28 @@ export default function Home() {
           <Market
             stockData={stockData}
             onOpenStock={openStockDetails}
-            onAddToWatchlist={addToWatchlist}
+            onAddToWatchlist={() => { }}
             showNotification={showNotification}
           />
         )
       case "portfolio":
-        return <Portfolio stockData={stockData} userData={userData} onOpenStock={openStockDetails} />
+        return <Portfolio stockData={stockData} userData={user} onOpenStock={openStockDetails} />
       case "leaderboard":
         return <Leaderboard />
       default:
-        return (
-          <Dashboard
-            stockData={stockData}
-            userData={userData}
-            onOpenStock={openStockDetails}
-            onAddToWatchlist={addToWatchlist}
-            onRemoveFromWatchlist={removeFromWatchlist}
-            onQuickTrade={quickTrade}
-            showNotification={showNotification}
-          />
-        )
+        return null
     }
   }
+
+  useEffect(() => {
+    if (user) {
+      setTimeout(() => {
+        showNotification(`Welcome back, ${user.displayName}!`, "success")
+      }, 1000)
+    }
+  }, [user])
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex relative">
@@ -228,7 +157,7 @@ export default function Home() {
         onPageChange={setCurrentPage}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
-        userData={userData}
+        user={user}
       />
 
       <main className="flex-1 flex flex-col lg:ml-72">
@@ -236,7 +165,7 @@ export default function Home() {
           stockData={stockData}
           onOpenStock={openStockDetails}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          userBalance={userData.balance}
+          user={user}
         />
 
         <div className="flex-1 p-6">{renderCurrentPage()}</div>
@@ -245,7 +174,7 @@ export default function Home() {
       {tradeModalOpen && currentTradeStock && (
         <TradeModal
           stock={currentTradeStock}
-          userData={userData}
+          userData={user}
           onClose={() => setTradeModalOpen(false)}
           onExecuteTrade={executeTrade}
           loading={loading}

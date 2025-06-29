@@ -1,98 +1,130 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { lastfmAPI } from "@/lib/lastfm"
-import { db } from "@/lib/database"
-import { signJWT, setAuthCookie } from "@/lib/auth"
+import { supabaseAdmin } from "@/lib/supabase"
+import jwt from "jsonwebtoken"
+
+const JWT_SECRET = process.env.JWT_SECRET!
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const token = searchParams.get("token")
 
-    console.log("Last.fm callback received with token:", token ? token.substring(0, 10) + "..." : "null")
-
     if (!token) {
       console.error("No token provided in callback")
       return NextResponse.redirect(new URL("/login?error=no_token", request.url))
     }
 
-    console.log("Attempting to get Last.fm session...")
-    const session = await lastfmAPI.getSession(token)
+    console.log("Processing Last.fm callback with token:", token.substring(0, 10) + "...")
 
+    const session = await lastfmAPI.getSession(token)
     if (!session) {
       console.error("Failed to get Last.fm session")
       return NextResponse.redirect(new URL("/login?error=invalid_token", request.url))
     }
 
-    console.log("Last.fm session obtained!")
-    console.log("Username:", session.name)
-    console.log("Session key:", session.key.substring(0, 10) + "...")
+    console.log("Got Last.fm session for user:", session.name)
 
     const userInfo = await lastfmAPI.getUserInfo(session.name)
     if (!userInfo) {
-      console.error("Failed to get user info for:", session.name)
+      console.error("Failed to get user info from Last.fm")
       return NextResponse.redirect(new URL("/login?error=user_info_failed", request.url))
     }
 
-    console.log("Last.fm User Data Retrieved:")
-    console.log("Username:", userInfo.name)
-    console.log("Real Name:", userInfo.realname || "Not provided")
-    console.log("Total Scrobbles:", userInfo.playcount)
-    console.log("Member Since:", new Date(Number.parseInt(userInfo.registered.unixtime) * 1000).toLocaleDateString())
-    console.log("Profile Images:", userInfo.image?.length || 0, "available")
-
-    const recentTracks = await lastfmAPI.getRecentTracks(session.name, 5)
-    console.log("Recent Tracks:")
-    recentTracks.forEach((track, index) => {
-      console.log(`  ${index + 1}. ${track.artist["#text"]} - ${track.name}`)
+    console.log("Last.fm user info:", {
+      name: userInfo.name,
+      realname: userInfo.realname,
+      playcount: userInfo.playcount,
+      country: userInfo.country,
     })
 
-    let user = await db.getUserByLastFm(session.name)
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("*")
+      .eq("lastfm_username", session.name)
+      .single()
 
-    if (!user) {
-      console.log("Creating new user for:", session.name)
-      user = await db.createUser({
-        email: `${session.name}@lastfm.local`,
-        display_name: userInfo.realname || session.name,
-        lastfm_username: session.name,
-        lastfm_verified: false,
-        balance: 10000,
-        is_admin: false,
-      })
-      console.log("New user created with ID:", user.id)
+    let user
+    if (existingUser) {
+      const { data: updatedUser, error } = await supabaseAdmin
+        .from("users")
+        .update({
+          total_scrobbles: Number.parseInt(userInfo.playcount) || 0,
+          scrobble_coins: Number.parseInt(userInfo.playcount) || 0,
+          profile_image_url: userInfo.image?.[2]?.["#text"] || userInfo.image?.[1]?.["#text"],
+          lastfm_verified: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingUser.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error("Error updating user:", error)
+        return NextResponse.redirect(new URL("/login?error=database_error", request.url))
+      }
+
+      user = updatedUser
     } else {
-      console.log("Existing user found:", user.id)
-      await db.updateUser(user.id, {
-        display_name: userInfo.realname || session.name,
-      })
+      const { data: newUser, error } = await supabaseAdmin
+        .from("users")
+        .insert({
+          display_name: userInfo.realname || userInfo.name,
+          lastfm_username: session.name,
+          lastfm_verified: true,
+          balance: 10000.0,
+          scrobble_coins: Number.parseInt(userInfo.playcount) || 0,
+          total_scrobbles: Number.parseInt(userInfo.playcount) || 0,
+          profile_image_url: userInfo.image?.[2]?.["#text"] || userInfo.image?.[1]?.["#text"],
+          is_admin: false,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error("Error creating user:", error)
+        return NextResponse.redirect(new URL("/login?error=database_error", request.url))
+      }
+
+      user = newUser
     }
 
-    await db.createLastFmProfile({
-      user_id: user.id,
-      lastfm_username: session.name,
-      access_token: session.key,
-      profile_data: {
-        ...userInfo,
-        recentTracks: recentTracks,
-        lastUpdated: new Date().toISOString(),
+    await supabaseAdmin.from("lastfm_profiles").upsert(
+      {
+        user_id: user.id,
+        lastfm_username: session.name,
+        session_key: session.key,
+        profile_data: userInfo,
+        updated_at: new Date().toISOString(),
       },
+      {
+        onConflict: "user_id",
+      },
+    )
+
+    const jwtToken = jwt.sign(
+      {
+        userId: user.id,
+        username: user.lastfm_username,
+        displayName: user.display_name,
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" },
+    )
+
+    console.log("Authentication successful for user:", user.display_name)
+
+    const response = NextResponse.redirect(new URL("/", request.url))
+    response.cookies.set("auth-token", jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
     })
 
-    console.log("Last.fm profile data saved to database")
-
-    const jwtToken = signJWT({
-      userId: user.id,
-      email: user.email,
-      lastfmUsername: user.lastfm_username,
-      lastfmVerified: user.lastfm_verified,
-      isAdmin: user.is_admin,
-    })
-
-    await setAuthCookie(jwtToken)
-
-    console.log("Authentication successful! Redirecting to dashboard...")
-    return NextResponse.redirect(new URL("/", request.url))
+    return response
   } catch (error) {
     console.error("Last.fm callback error:", error)
-    return NextResponse.redirect(new URL("/login?error=callback_failed", request.url))
+    return NextResponse.redirect(new URL("/login?error=server_error", request.url))
   }
 }

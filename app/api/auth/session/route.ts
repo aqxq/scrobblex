@@ -1,41 +1,40 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
-import { db } from "@/lib/database"
+import jwt from "jsonwebtoken"
+import { supabaseAdmin } from "@/lib/supabase"
+
+const JWT_SECRET = process.env.JWT_SECRET!
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: "No session found" }, { status: 401 })
+    const token = request.cookies.get("auth-token")?.value
+
+    if (!token) {
+      return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    const user = await db.getUserById(session.userId)
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
-    }
+    const decoded = jwt.verify(token, JWT_SECRET) as any
 
-    const lastfmProfile = await db.getLastFmProfile(user.id)
+    const { data: user, error } = await supabaseAdmin.from("users").select("*").eq("id", decoded.userId).single()
+
+    if (error || !user) {
+      return NextResponse.json({ user: null }, { status: 401 })
+    }
 
     return NextResponse.json({
       user: {
         id: user.id,
-        email: user.email,
         displayName: user.display_name,
         lastfmUsername: user.lastfm_username,
         lastfmVerified: user.lastfm_verified,
         balance: user.balance,
+        scrobbleCoins: user.scrobble_coins,
+        totalScrobbles: user.total_scrobbles,
+        profileImageUrl: user.profile_image_url,
         isAdmin: user.is_admin,
-        createdAt: user.created_at,
       },
-      lastfmProfile: lastfmProfile
-        ? {
-            username: lastfmProfile.lastfm_username,
-            profileData: lastfmProfile.profile_data,
-          }
-        : null,
     })
   } catch (error) {
-    console.error("Session check error:", error)
-    return NextResponse.json({ error: "Failed to check session" }, { status: 500 })
+    console.error("Session verification error:", error)
+    return NextResponse.json({ user: null }, { status: 401 })
   }
 }
