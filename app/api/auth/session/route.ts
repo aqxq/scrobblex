@@ -1,27 +1,19 @@
-import { type NextRequest, NextResponse } from "next/server"
-import jwt from "jsonwebtoken"
+import { NextResponse } from "next/server"
+import { getSession } from "@/lib/auth"
 import { supabaseAdmin } from "@/lib/supabase"
 
-const JWT_SECRET = process.env.JWT_SECRET!
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const token = request.cookies.get("auth-token")?.value
+    const session = await getSession()
 
-    if (!token) {
+    if (!session) {
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
-    if (!supabaseAdmin) {
-      console.error("Supabase admin client not available")
-      return NextResponse.json({ error: "Database connection error" }, { status: 500 })
-    }
-
-    const decoded = jwt.verify(token, JWT_SECRET) as any
-
-    const { data: user, error } = await supabaseAdmin.from("users").select("*").eq("id", decoded.userId).single()
+    const { data: user, error } = await supabaseAdmin.from("users").select("*").eq("id", session.userId).single()
 
     if (error || !user) {
+      console.error("Error fetching user:", error)
       return NextResponse.json({ user: null }, { status: 401 })
     }
 
@@ -39,7 +31,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Session verification error:", error)
-    return NextResponse.json({ user: null }, { status: 401 })
+    console.error("Session check error:", error)
+    return NextResponse.json({ user: null }, { status: 500 })
   }
 }

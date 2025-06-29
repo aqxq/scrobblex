@@ -51,13 +51,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUserData = async () => {
     try {
-      const response = await fetch("/api/user/portfolio")
-      if (response.ok) {
-        const data = await response.json()
-        setUser(data.user)
-        setPortfolio(data.portfolio)
-      } else {
+      console.log("Fetching user data...")
+
+      const sessionResponse = await fetch("/api/auth/session")
+      if (!sessionResponse.ok) {
+        console.log("No valid session found")
         setUser(null)
+        setPortfolio(null)
+        setIsLoading(false)
+        return
+      }
+
+      const sessionData = await sessionResponse.json()
+      if (!sessionData.user) {
+        console.log("No user in session")
+        setUser(null)
+        setPortfolio(null)
+        setIsLoading(false)
+        return
+      }
+
+      setUser(sessionData.user)
+
+      const portfolioResponse = await fetch("/api/user/portfolio")
+      if (portfolioResponse.ok) {
+        const portfolioData = await portfolioResponse.json()
+        setPortfolio(portfolioData.portfolio)
+      } else {
+        console.error("Failed to fetch portfolio data")
         setPortfolio(null)
       }
     } catch (error) {
