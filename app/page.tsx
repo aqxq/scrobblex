@@ -13,6 +13,7 @@ import { useUserData } from "@/hooks/use-user-data"
 import { useStockData } from "@/hooks/use-stock-data"
 import { Notification } from "@/components/notification"
 import { useAuth } from "@/components/auth-provider"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export type Page = "dashboard" | "market" | "portfolio" | "leaderboard"
 
@@ -81,10 +82,15 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-center text-white">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-300">Loading...</p>
+      <div className="min-h-screen bg-gray-900 p-4">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <Skeleton className="h-16 w-full bg-gray-800" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Skeleton className="h-32 bg-gray-800" />
+            <Skeleton className="h-32 bg-gray-800" />
+            <Skeleton className="h-32 bg-gray-800" />
+          </div>
+          <Skeleton className="h-96 w-full bg-gray-800" />
         </div>
       </div>
     )
@@ -230,7 +236,7 @@ export default function HomePage() {
         onPageChange={setCurrentPage}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
-        userData={userData}
+        user={userData}
       />
 
       <main className="flex-1 flex flex-col lg:ml-72">
@@ -238,7 +244,7 @@ export default function HomePage() {
           stockData={stockData}
           onOpenStock={openStockDetails}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          userBalance={userData.balance}
+          user={userData}
         />
 
         <div className="flex-1 p-6">{renderCurrentPage()}</div>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { verifyJWT } from "./lib/auth"
+import { verifyJWT } from "@/lib/auth"
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -9,30 +9,23 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/api/") ||
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/favicon.ico") ||
-    pathname === "/login" ||
-    pathname.includes(".")
+    pathname === "/login"
   ) {
     return NextResponse.next()
   }
 
   const token = request.cookies.get("auth-token")?.value
 
-  if (!token && pathname !== "/login") {
+  if (!token) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  if (token) {
-    const session = verifyJWT(token)
+  const user = verifyJWT(token)
 
-    if (!session && pathname !== "/login") {
-      const response = NextResponse.redirect(new URL("/login", request.url))
-      response.cookies.delete("auth-token")
-      return response
-    }
-
-    if (session && pathname === "/login") {
-      return NextResponse.redirect(new URL("/", request.url))
-    }
+  if (!user) {
+    const response = NextResponse.redirect(new URL("/login", request.url))
+    response.cookies.delete("auth-token")
+    return response
   }
 
   return NextResponse.next()
@@ -40,6 +33,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
   ],
 }
