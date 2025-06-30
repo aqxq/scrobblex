@@ -13,8 +13,6 @@ import { useUserData } from "@/hooks/use-user-data"
 import { useStockData } from "@/hooks/use-stock-data"
 import { Notification } from "@/components/notification"
 import { useAuth } from "@/components/auth-provider"
-import { getSession } from "@/lib/auth"
-import { redirect } from "next/navigation"
 
 export type Page = "dashboard" | "market" | "portfolio" | "leaderboard"
 
@@ -46,13 +44,7 @@ export interface NotificationItem {
   type: string
 }
 
-export default async function HomePage() {
-  const session = await getSession()
-
-  if (!session) {
-    redirect("/login")
-  }
-
+export default function HomePage() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tradeModalOpen, setTradeModalOpen] = useState(false)
@@ -80,10 +72,12 @@ export default async function HomePage() {
   }, [user, isLoading, router])
 
   useEffect(() => {
-    setTimeout(() => {
-      showNotification("Welcome to ScrobbleX!", "success")
-    }, 1000)
-  }, [])
+    if (user) {
+      setTimeout(() => {
+        showNotification("Welcome to ScrobbleX!", "success")
+      }, 1000)
+    }
+  }, [user])
 
   if (isLoading) {
     return (

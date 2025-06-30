@@ -1,42 +1,38 @@
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { verifyJWT } from '@/lib/auth'
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { verifyJWT } from "./lib/auth"
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  const publicRoutes = ['/login', '/api/auth/lastfm/start', '/api/auth/lastfm/callback']
-  
-  const publicApiRoutes = ['/api/auth/']
-
-  if (publicRoutes.includes(pathname) || publicApiRoutes.some(route => pathname.startsWith(route))) {
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/") ||
+    pathname.startsWith("/favicon.ico") ||
+    pathname === "/login" ||
+    pathname.startsWith("/auth/")
+  ) {
     return NextResponse.next()
   }
 
-  const token = request.cookies.get('auth-token')?.value
+  const token = request.cookies.get("auth-token")?.value
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  if (!token && pathname !== "/login") {
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  const session = verifyJWT(token)
-  if (!session) {
-    const response = NextResponse.redirect(new URL('/login', request.url))
-    response.cookies.delete('auth-token')
-    return response
-  }
+  if (token) {
+    const session = verifyJWT(token)
 
-  if (pathname.startsWith('/api/')) {
-    const requestHeaders = new Headers(request.headers)
-    requestHeaders.set('x-user-id', session.userId)
-    requestHeaders.set('x-user-username', session.username)
-    requestHeaders.set('x-user-admin', session.isAdmin.toString())
+    if (!session && pathname !== "/login") {
+      const response = NextResponse.redirect(new URL("/login", request.url))
+      response.cookies.delete("auth-token")
+      return response
+    }
 
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    })
+    if (session && pathname === "/login") {
+      return NextResponse.redirect(new URL("/", request.url))
+    }
   }
 
   return NextResponse.next()
@@ -44,6 +40,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
   ],
 }

@@ -1,147 +1,123 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { lastfmAPI } from "@/lib/lastfm"
 import { supabaseAdmin } from "@/lib/supabase"
-import jwt from "jsonwebtoken"
+import { signJWT } from "@/lib/auth-server"
 
-const JWT_SECRET = process.env.JWT_SECRET!
+const LASTFM_API_KEY = process.env.NEXT_PUBLIC_LASTFM_API_KEY!
+const LASTFM_SECRET = process.env.LASTFM_SECRET!
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const token = searchParams.get("token")
+
+  if (!token) {
+    console.error("No token provided in callback")
+    return NextResponse.redirect(new URL("/login?error=no_token", request.url))
+  }
+
   try {
-    const { searchParams } = new URL(request.url)
-    const token = searchParams.get("token")
+    const sessionResponse = await fetch(
+      `https://ws.audioscrobbler.com/2.0/?method=auth.getSession&api_key=${LASTFM_API_KEY}&token=${token}&api_sig=${generateApiSig(
+        {
+          method: "auth.getSession",
+          api_key: LASTFM_API_KEY,
+          token,
+        },
+      )}&format=json`,
+    )
 
-    console.log("Last.fm callback received with token:", token ? token.substring(0, 10) + "..." : "null")
+    const sessionData = await sessionResponse.json()
 
-    if (!token) {
-      console.error("No token provided in callback")
-      return NextResponse.redirect(new URL("/login?error=no_token", request.url))
+    if (sessionData.error) {
+      console.error("Last.fm session error:", sessionData.error, sessionData.message)
+      return NextResponse.redirect(new URL("/login?error=lastfm_session", request.url))
     }
 
-    if (!JWT_SECRET) {
-      console.error("JWT_SECRET not configured")
-      return NextResponse.redirect(new URL("/login?error=server_error", request.url))
-    }
+    const { session } = sessionData
+    const { name: username, key: sessionKey } = session
 
-    console.log("Processing Last.fm callback with token:", token.substring(0, 10) + "...")
+    const userInfoResponse = await fetch(
+      `https://ws.audioscrobbler.com/2.0/?method=user.getInfo&user=${username}&api_key=${LASTFM_API_KEY}&format=json`,
+    )
 
-    if (!supabaseAdmin) {
-      console.error("Supabase admin client not available")
-      return NextResponse.redirect(new URL("/login?error=database_error", request.url))
-    }
-
-    const session = await lastfmAPI.getSession(token)
-    if (!session) {
-      console.error("Failed to get Last.fm session")
-      return NextResponse.redirect(new URL("/login?error=invalid_token", request.url))
-    }
-
-    console.log("Got Last.fm session for user:", session.name)
-
-    const userInfo = await lastfmAPI.getUserInfo(session.name)
-    if (!userInfo) {
-      console.error("Failed to get user info from Last.fm")
-      return NextResponse.redirect(new URL("/login?error=user_info_failed", request.url))
-    }
-
-    console.log("Last.fm user info:", {
-      name: userInfo.name,
-      realname: userInfo.realname,
-      playcount: userInfo.playcount,
-      country: userInfo.country,
-    })
+    const userInfoData = await userInfoResponse.json()
+    const userInfo = userInfoData.user
 
     const { data: existingUser, error: fetchError } = await supabaseAdmin
       .from("users")
       .select("*")
-      .eq("lastfm_username", session.name)
+      .eq("lastfm_username", username)
       .single()
 
+    let user
+
     if (fetchError && fetchError.code !== "PGRST116") {
-      console.error("Error fetching user:", fetchError)
-      return NextResponse.redirect(new URL("/login?error=database_error", request.url))
+      console.error("Database error:", fetchError)
+      return NextResponse.redirect(new URL("/login?error=database", request.url))
     }
 
-    let user
     if (existingUser) {
-      console.log("Updating existing user:", existingUser.id)
-      const { data: updatedUser, error } = await supabaseAdmin
+      const { data: updatedUser, error: updateError } = await supabaseAdmin
         .from("users")
         .update({
-          total_scrobbles: Number.parseInt(userInfo.playcount) || 0,
-          scrobble_coins: Number.parseInt(userInfo.playcount) || 0,
-          profile_image_url: userInfo.image?.[2]?.["#text"] || userInfo.image?.[1]?.["#text"],
           lastfm_verified: true,
+          profile_image_url: userInfo.image?.[2]?.["#text"] || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingUser.id)
         .select()
         .single()
 
-      if (error) {
-        console.error("Error updating user:", error)
-        return NextResponse.redirect(new URL("/login?error=database_error", request.url))
+      if (updateError) {
+        console.error("Error updating user:", updateError)
+        return NextResponse.redirect(new URL("/login?error=update_user", request.url))
       }
 
       user = updatedUser
+
+      await supabaseAdmin.from("lastfm_profiles").upsert({
+        user_id: user.id,
+        lastfm_username: username,
+        session_key: sessionKey,
+        profile_data: userInfo,
+        updated_at: new Date().toISOString(),
+      })
     } else {
-      console.log("Creating new user for:", session.name)
-      const { data: newUser, error } = await supabaseAdmin
+      const { data: newUser, error: createError } = await supabaseAdmin
         .from("users")
         .insert({
-          display_name: userInfo.realname || userInfo.name,
-          lastfm_username: session.name,
+          display_name: userInfo.realname || username,
+          lastfm_username: username,
           lastfm_verified: true,
+          profile_image_url: userInfo.image?.[2]?.["#text"] || null,
           balance: 10000.0,
-          scrobble_coins: Number.parseInt(userInfo.playcount) || 0,
+          scrobble_coins: 0,
           total_scrobbles: Number.parseInt(userInfo.playcount) || 0,
-          profile_image_url: userInfo.image?.[2]?.["#text"] || userInfo.image?.[1]?.["#text"],
-          is_admin: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
         })
         .select()
         .single()
 
-      if (error) {
-        console.error("Error creating user:", error)
-        return NextResponse.redirect(new URL("/login?error=database_error", request.url))
+      if (createError) {
+        console.error("Error creating user:", createError)
+        return NextResponse.redirect(new URL("/login?error=create_user", request.url))
       }
 
       user = newUser
-    }
 
-    console.log("User data:", { id: user.id, username: user.lastfm_username, displayName: user.display_name })
-
-    const { error: profileError } = await supabaseAdmin.from("lastfm_profiles").upsert(
-      {
+      await supabaseAdmin.from("lastfm_profiles").insert({
         user_id: user.id,
-        lastfm_username: session.name,
-        session_key: session.key,
+        lastfm_username: username,
+        session_key: sessionKey,
         profile_data: userInfo,
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "user_id",
-      },
-    )
-
-    if (profileError) {
-      console.error("Error storing Last.fm profile:", profileError)
+      })
     }
 
-    const jwtToken = jwt.sign(
-      {
-        userId: user.id,
-        username: user.lastfm_username,
-        displayName: user.display_name,
-        lastfmVerified: user.lastfm_verified,
-        isAdmin: user.is_admin,
-      },
-      JWT_SECRET,
-      { expiresIn: "7d" },
-    )
-
-    console.log("Authentication successful for user:", user.display_name)
+    const jwtToken = signJWT({
+      userId: user.id,
+      username: user.lastfm_username,
+      displayName: user.display_name,
+      lastfmVerified: user.lastfm_verified,
+      isAdmin: user.is_admin,
+    })
 
     const response = NextResponse.redirect(new URL("/", request.url))
     response.cookies.set("auth-token", jwtToken, {
@@ -154,7 +130,20 @@ export async function GET(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error("Last.fm callback error:", error)
-    return NextResponse.redirect(new URL("/login?error=server_error", request.url))
+    console.error("Callback error:", error)
+    return NextResponse.redirect(new URL("/login?error=callback", request.url))
   }
+}
+
+function generateApiSig(params: Record<string, string>): string {
+  const sortedParams = Object.keys(params)
+    .sort()
+    .map((key) => `${key}${params[key]}`)
+    .join("")
+
+  const crypto = require("crypto")
+  return crypto
+    .createHash("md5")
+    .update(sortedParams + LASTFM_SECRET)
+    .digest("hex")
 }

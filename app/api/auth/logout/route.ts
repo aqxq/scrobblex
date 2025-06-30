@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server"
-import { clearAuthCookie } from "@/lib/auth"
+import { type NextRequest, NextResponse } from "next/server"
 
-export async function POST() {
-  try {
-    await clearAuthCookie()
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Logout error:", error)
-    return NextResponse.json({ error: "Failed to logout" }, { status: 500 })
-  }
+export async function POST(request: NextRequest) {
+  const response = NextResponse.json({ success: true })
+
+  response.cookies.set("auth-token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  })
+
+  return response
 }
