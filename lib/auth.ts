@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken"
 
-const JWT_SECRET = process.env.JWT_SECRET || "superdupersecretkeylololol"
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
 
 export interface JWTPayload {
   userId: string
@@ -8,38 +8,34 @@ export interface JWTPayload {
   displayName: string
   lastfmVerified: boolean
   isAdmin: boolean
-  iat?: number
-  exp?: number
 }
 
-export function signJWT(payload: Omit<JWTPayload, "iat" | "exp">): string {
+export function signJWT(payload: JWTPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" })
 }
 
 export function verifyJWT(token: string): JWTPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
-    return decoded
+    return jwt.verify(token, JWT_SECRET) as JWTPayload
   } catch (error) {
     console.error("JWT verification failed:", error)
     return null
   }
 }
 
-export function getTokenFromCookies(): string | null {
-  if (typeof document === "undefined") return null
-
-  const cookies = document.cookie.split(";")
-  const authCookie = cookies.find((cookie) => cookie.trim().startsWith("auth-token="))
-
-  if (!authCookie) return null
-
-  return authCookie.split("=")[1]
-}
-
 export function getCurrentSession(): JWTPayload | null {
-  const token = getTokenFromCookies()
-  if (!token) return null
+  if (typeof window === "undefined") return null
 
-  return verifyJWT(token)
+  try {
+    const cookies = document.cookie.split(";")
+    const authCookie = cookies.find((cookie) => cookie.trim().startsWith("auth-token="))
+
+    if (!authCookie) return null
+
+    const token = authCookie.split("=")[1]
+    return verifyJWT(token)
+  } catch (error) {
+    console.error("Error getting current session:", error)
+    return null
+  }
 }

@@ -1,23 +1,18 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { lastfmAPI } from "@/lib/lastfm"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET(request: NextRequest) {
-  try {
-    const callbackUrl =
-      process.env.NEXT_PUBLIC_LASTFM_CALLBACK_URL || `${request.nextUrl.origin}/api/auth/lastfm/callback`
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-    console.log("Starting Last.fm auth with callback:", callbackUrl)
-
-    const authUrl = await lastfmAPI.getAuthUrl(callbackUrl)
-
-    console.log("Generated Last.fm auth URL:", authUrl)
-    return NextResponse.json({ authUrl })
-  } catch (error) {
-    console.error("Error starting Last.fm auth:", error)
-    return NextResponse.json({ error: "Failed to start authentication" }, { status: 500 })
-  }
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing Supabase environment variables")
 }
 
-export async function POST(request: NextRequest) {
-  return GET(request)
-}
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+})
