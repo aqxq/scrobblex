@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
-import { getCurrentSession, type JWTPayload } from "@/lib/auth"
+import type { JWTPayload } from "@/lib/auth"
 
 interface Portfolio {
   totalValue: number
@@ -42,13 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log("Fetching user data")
 
-      const clientSession = getCurrentSession()
-      if (clientSession) {
-        setUser(clientSession)
-        setIsLoading(false)
-        return
-      }
-
       const sessionResponse = await fetch("/api/auth/session")
       if (!sessionResponse.ok) {
         console.log("No valid session found")
@@ -69,12 +62,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(sessionData.user)
 
-      const portfolioResponse = await fetch("/api/user/portfolio")
-      if (portfolioResponse.ok) {
-        const portfolioData = await portfolioResponse.json()
-        setPortfolio(portfolioData.portfolio)
-      } else {
-        console.error("Failed to fetch portfolio data")
+      try {
+        const portfolioResponse = await fetch("/api/user/portfolio")
+        if (portfolioResponse.ok) {
+          const portfolioData = await portfolioResponse.json()
+          setPortfolio(portfolioData.portfolio)
+        } else {
+          console.error("Failed to fetch portfolio data")
+          setPortfolio(null)
+        }
+      } catch (portfolioError) {
+        console.error("Portfolio fetch error:", portfolioError)
         setPortfolio(null)
       }
     } catch (error) {
@@ -94,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.location.href = "/login"
     } catch (error) {
       console.error("Logout error:", error)
+      window.location.href = "/login"
     }
   }
 
@@ -119,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error("useAuth must b used within an AithProvider")
+    throw new Error("useAuth must be used within an AuthProvider")
   }
   return context
 }

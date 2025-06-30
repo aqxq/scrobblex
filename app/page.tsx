@@ -73,16 +73,17 @@ export default function HomePage() {
   }, [user, isLoading, router])
 
   useEffect(() => {
-    if (user) {
-      setTimeout(() => {
-        showNotification("Welcome to ScrobbleX!", "success")
+    if (user && !isLoading) {
+      const timer = setTimeout(() => {
+        showNotification(`Welcome back, ${user.displayName}!`, "success")
       }, 1000)
+      return () => clearTimeout(timer)
     }
-  }, [user])
+  }, [user, isLoading])
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-900 p-4">
+      <div className="min-h-screen bg-slate-950 p-4">
         <div className="max-w-7xl mx-auto space-y-6">
           <Skeleton className="h-16 w-full bg-gray-800" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

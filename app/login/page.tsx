@@ -52,7 +52,8 @@ export default function LoginPage() {
     } catch (error) {
       console.error("Login error:", error)
       setIsLoading(false)
-      alert("erro during log in. please try again.")}
+      alert("Error during login. Please try again.")
+    }
   }
 
   return (
