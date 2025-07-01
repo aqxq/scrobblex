@@ -1,1 +1,1 @@
-scrobblex.dvsj.xyz coming soon
+those who know
