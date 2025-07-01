@@ -1,36 +1,73 @@
 export interface Stock {
   symbol: string
   name: string
-  genre: string
   price: number
+  current_price?: number
   change: number
+  price_change_percent?: number
   changePercent: number
   volume: number
   marketCap: number
+  genre: string
 }
 
-export interface UserData {
+export interface User {
+  id: string
   balance: number
-  portfolio: PortfolioItem[]
-  watchlist: string[]
-  transactions: Transaction[]
+  lastfm_username?: string
+  profile_picture?: string
+  scrobbles?: number
 }
 
-export interface PortfolioItem {
+export interface Artist {
+  id: string
   symbol: string
+  name: string
+  current_price: number
+  price_change: number
+  price_change_percent: number
+  volume: number
+  market_cap: number
+  genre: string
+  scrobbles?: number
+  image_url?: string
+}
+
+export interface Portfolio {
+  id: string
+  user_id: string
+  artist_id: string
   shares: number
-  avgPrice: number
-  purchaseDate: string
+  average_price: number
+  total_invested: number
+  artist?: Artist
 }
 
 export interface Transaction {
   id: string
+  user_id: string
+  artist_id: string
   type: "buy" | "sell"
-  symbol: string
   shares: number
   price: number
   total: number
-  timestamp: string
+  created_at: string
+  artist?: Artist
 }
 
-export type Page = "dashboard" | "market" | "portfolio"
+export interface Watchlist {
+  id: string
+  user_id: string
+  artist_id: string
+  created_at: string
+  artist?: Artist
+}
+
+export interface News {
+  id: string
+  title: string
+  content: string
+  image_url?: string
+  created_at: string
+  author?: string
+}

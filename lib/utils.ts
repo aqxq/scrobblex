@@ -1,16 +1,33 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
-import type { Stock } from "./types"
+export interface Stock {
+  symbol: string
+  name: string
+  price: number
+  change: number
+  changePercent: number
+  volume: number
+  marketCap: number
+  genre: string
+}
 
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number | undefined | null): string {
+  if (amount === undefined || amount === null || !Number.isFinite(amount)) {
+    return "$0.00"
+  }
+
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
   }).format(amount)
 }
 
-export function formatPercent(value: number): string {
+export function formatPercent(value: number | undefined | null): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return "+0.00%"
+  }
+
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`
 }
 

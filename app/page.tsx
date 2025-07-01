@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Sidebar from "@/components/sidebar"
 import Header from "@/components/header"
@@ -11,17 +11,80 @@ import Leaderboard from "@/components/leaderboard"
 import TradeModal from "@/components/trade-modal"
 import AddFundsModal from "@/components/add-funds-modal"
 import { Notification } from "@/components/notification"
-import { useAuth } from "@/hooks/use-auth"
-import { useUserData } from "@/hooks/use-user-data"
-import { useArtistData } from "@/hooks/use-artist-data"
 
 export type Page = "dashboard" | "market" | "portfolio" | "leaderboard"
+
+export interface Stock {
+  symbol: string
+  name: string
+  price: number
+  change: number
+  changePercent: number
+  volume: number
+  marketCap: number
+  genre: string
+}
 
 export interface NotificationItem {
   id: number
   message: string
   type: string
 }
+
+const useAuth = () => ({
+  user: { id: "1", balance: 10000, lastfm_username: "mus1cluvr" },
+  loading: false,
+  logout: async () => {},
+})
+
+const useUserData = () => ({
+  userData: {
+    balance: 10000,
+    portfolio: [],
+    watchlist: [],
+    transactions: [],
+    lastfmData: null,
+  },
+  loading: false,
+  refetch: async () => {},
+})
+
+const useArtistData = () => ({
+  artists: [
+    {
+      id: "1",
+      symbol: "KLAMAR",
+      name: "Kendrick Lamar",
+      current_price: 24.35,
+      price_change: 1.23,
+      price_change_percent: 5.3,
+      volume: 1500000,
+      market_cap: 24350000,
+      genre: "Hip Hop",
+      price: 24.35,
+      change: 5.3,
+      changePercent: 5.3,
+      marketCap: 24350000,
+    },
+    {
+      id: "2",
+      symbol: "TSWIFT",
+      name: "Taylor Swift",
+      current_price: 45.67,
+      price_change: -2.34,
+      price_change_percent: -4.9,
+      volume: 2300000,
+      market_cap: 45670000,
+      genre: "Pop",
+      price: 45.67,
+      change: -4.9,
+      changePercent: -4.9,
+      marketCap: 45670000,
+    },
+  ],
+  loading: false,
+  refetch: async () => {},
+})
 
 export default function Home() {
   const router = useRouter()
@@ -36,12 +99,6 @@ export default function Home() {
   const [currentTradeArtist, setCurrentTradeArtist] = useState<any>(null)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    }
-  }, [user, authLoading, router])
 
   const showNotification = (message: string, type = "info") => {
     const id = Date.now()
@@ -62,7 +119,7 @@ export default function Home() {
   const executeTrade = async (type: "buy" | "sell", shares: number) => {
     if (!currentTradeArtist || !user) return
 
-    const total = shares * currentTradeArtist.current_price
+    const total = shares * (currentTradeArtist.current_price || currentTradeArtist.price || 0)
 
     if (type === "buy" && total > userData.balance) {
       showNotification("Insufficient funds", "error")
@@ -72,28 +129,14 @@ export default function Home() {
     setLoading(true)
 
     try {
-      const response = await fetch("/api/trade", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          artistId: currentTradeArtist.id,
-          shares,
-          price: currentTradeArtist.current_price,
-          type,
-        }),
-      })
+      await new Promise((resolve) => setTimeout(resolve, 1500))
 
-      const result = await response.json()
-
-      if (result.success) {
-        await refetchUser()
-        setTradeModalOpen(false)
-        showNotification(result.message, "success")
-      } else {
-        showNotification(result.error || "Trade failed", "error")
-      }
+      await refetchUser()
+      setTradeModalOpen(false)
+      showNotification(
+        `Successfully ${type === "buy" ? "bought" : "sold"} ${shares} shares of ${currentTradeArtist.symbol}`,
+        "success",
+      )
     } catch (error) {
       showNotification("Trade failed. Please try again.", "error")
     } finally {
@@ -153,10 +196,6 @@ export default function Home() {
         <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
-  }
-
-  if (!user) {
-    return null
   }
 
   return (
