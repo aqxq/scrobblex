@@ -9,35 +9,13 @@ import Market from "@/components/market"
 import Portfolio from "@/components/portfolio"
 import Leaderboard from "@/components/leaderboard"
 import TradeModal from "@/components/trade-modal"
-import { useUserData } from "@/hooks/use-user-data"
-import { useStockData } from "@/hooks/use-stock-data"
+import AddFundsModal from "@/components/add-funds-modal"
 import { Notification } from "@/components/notification"
-import { useAuth } from "@/components/auth-provider"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useAuth } from "@/hooks/use-auth"
+import { useUserData } from "@/hooks/use-user-data"
+import { useArtistData } from "@/hooks/use-artist-data"
 
 export type Page = "dashboard" | "market" | "portfolio" | "leaderboard"
-
-export interface Stock {
-  symbol: string
-  name: string
-  genre: string
-  price: number
-  change: number
-  volume: number
-  marketCap: number
-}
-
-export interface Transaction {
-  id: number
-  type: "buy" | "sell"
-  symbol: string
-  name: string
-  shares: number
-  price: number
-  total: number
-  date: string
-  timestamp: number
-}
 
 export interface NotificationItem {
   id: number
@@ -45,61 +23,25 @@ export interface NotificationItem {
   type: string
 }
 
-export default function HomePage() {
+export default function Home() {
+  const router = useRouter()
+  const { user, loading: authLoading, logout } = useAuth()
+  const { userData, loading: userLoading, refetch: refetchUser } = useUserData()
+  const { artists, loading: artistsLoading } = useArtistData()
+
   const [currentPage, setCurrentPage] = useState<Page>("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tradeModalOpen, setTradeModalOpen] = useState(false)
-  const [currentTradeStock, setCurrentTradeStock] = useState<Stock | null>(null)
+  const [addFundsModalOpen, setAddFundsModalOpen] = useState(false)
+  const [currentTradeArtist, setCurrentTradeArtist] = useState<any>(null)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(false)
 
-  const { user, isLoading } = useAuth()
-  const router = useRouter()
-  const {
-    userData,
-    updateBalance,
-    addToPortfolio,
-    removeFromPortfolio,
-    addTransaction,
-    addToWatchlist,
-    removeFromWatchlist,
-  } = useUserData()
-  const { stockData } = useStockData()
-
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (!authLoading && !user) {
       router.push("/login")
     }
-  }, [user, isLoading, router])
-
-  useEffect(() => {
-    if (user && !isLoading) {
-      const timer = setTimeout(() => {
-        showNotification(`Welcome back, ${user.displayName}!`, "success")
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [user, isLoading])
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 p-4">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <Skeleton className="h-16 w-full bg-gray-800" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Skeleton className="h-32 bg-gray-800" />
-            <Skeleton className="h-32 bg-gray-800" />
-            <Skeleton className="h-32 bg-gray-800" />
-          </div>
-          <Skeleton className="h-96 w-full bg-gray-800" />
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return null
-  }
+  }, [user, authLoading, router])
 
   const showNotification = (message: string, type = "info") => {
     const id = Date.now()
@@ -109,125 +51,112 @@ export default function HomePage() {
     }, 5000)
   }
 
-  const openStockDetails = (symbol: string) => {
-    const stock = stockData.find((s) => s.symbol === symbol)
-    if (stock) {
-      setCurrentTradeStock(stock)
+  const openArtistDetails = (symbol: string) => {
+    const artist = artists.find((a) => a.symbol === symbol)
+    if (artist) {
+      setCurrentTradeArtist(artist)
       setTradeModalOpen(true)
     }
   }
 
   const executeTrade = async (type: "buy" | "sell", shares: number) => {
-    if (!currentTradeStock) return
+    if (!currentTradeArtist || !user) return
 
-    const total = shares * currentTradeStock.price
+    const total = shares * currentTradeArtist.current_price
 
     if (type === "buy" && total > userData.balance) {
       showNotification("Insufficient funds", "error")
       return
     }
 
-    if (type === "sell") {
-      const holding = userData.portfolio.find((h) => h.symbol === currentTradeStock.symbol)
-      if (!holding || holding.shares < shares) {
-        showNotification("Insufficient shares to sell", "error")
-        return
-      }
-    }
-
     setLoading(true)
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const response = await fetch("/api/trade", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          artistId: currentTradeArtist.id,
+          shares,
+          price: currentTradeArtist.current_price,
+          type,
+        }),
+      })
 
-      const transaction: Transaction = {
-        id: Date.now(),
-        type,
-        symbol: currentTradeStock.symbol,
-        name: currentTradeStock.name,
-        shares,
-        price: currentTradeStock.price,
-        total,
-        date: new Date().toISOString(),
-        timestamp: Date.now(),
-      }
+      const result = await response.json()
 
-      if (type === "buy") {
-        updateBalance(userData.balance - total)
-        addToPortfolio(currentTradeStock.symbol, shares, currentTradeStock.price)
+      if (result.success) {
+        await refetchUser()
+        setTradeModalOpen(false)
+        showNotification(result.message, "success")
       } else {
-        updateBalance(userData.balance + total)
-        removeFromPortfolio(currentTradeStock.symbol, shares)
+        showNotification(result.error || "Trade failed", "error")
       }
-
-      addTransaction(transaction)
-
-      setLoading(false)
-      setTradeModalOpen(false)
-
-      showNotification(
-        `Successfully ${type === "buy" ? "bought" : "sold"} ${shares} shares of ${currentTradeStock.symbol}`,
-        "success",
-      )
     } catch (error) {
-      setLoading(false)
       showNotification("Trade failed. Please try again.", "error")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const quickTrade = (symbol: string, type: "buy" | "sell") => {
-    const stock = stockData.find((s) => s.symbol === symbol)
-    if (!stock) return
-
-    setCurrentTradeStock(stock)
-    setTradeModalOpen(true)
-
-    setTimeout(() => {
-      const event = new CustomEvent("setTradeType", { detail: type })
-      window.dispatchEvent(event)
-    }, 100)
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.push("/login")
+    } catch (error) {
+      showNotification("Error logging out", "error")
+    }
   }
 
   const renderCurrentPage = () => {
+    if (authLoading || userLoading || artistsLoading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      )
+    }
+
     switch (currentPage) {
       case "dashboard":
         return (
           <Dashboard
-            stockData={stockData}
+            artists={artists}
             userData={userData}
-            onOpenStock={openStockDetails}
-            onAddToWatchlist={addToWatchlist}
-            onRemoveFromWatchlist={removeFromWatchlist}
-            onQuickTrade={quickTrade}
+            onOpenArtist={openArtistDetails}
             showNotification={showNotification}
           />
         )
       case "market":
-        return (
-          <Market
-            stockData={stockData}
-            onOpenStock={openStockDetails}
-            onAddToWatchlist={addToWatchlist}
-            showNotification={showNotification}
-          />
-        )
+        return <Market artists={artists} onOpenArtist={openArtistDetails} showNotification={showNotification} />
       case "portfolio":
-        return <Portfolio stockData={stockData} userData={userData} onOpenStock={openStockDetails} />
+        return <Portfolio userData={userData} artists={artists} onOpenArtist={openArtistDetails} />
       case "leaderboard":
         return <Leaderboard />
       default:
         return (
           <Dashboard
-            stockData={stockData}
+            artists={artists}
             userData={userData}
-            onOpenStock={openStockDetails}
-            onAddToWatchlist={addToWatchlist}
-            onRemoveFromWatchlist={removeFromWatchlist}
-            onQuickTrade={quickTrade}
+            onOpenArtist={openArtistDetails}
             showNotification={showNotification}
           />
         )
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
   }
 
   return (
@@ -237,29 +166,33 @@ export default function HomePage() {
         onPageChange={setCurrentPage}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
-        user={userData}
+        userData={userData}
+        onLogout={handleLogout}
       />
 
       <main className="flex-1 flex flex-col lg:ml-72">
         <Header
-          stockData={stockData}
-          onOpenStock={openStockDetails}
+          artists={artists}
+          onOpenArtist={openArtistDetails}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          user={userData}
+          onAddFunds={() => setAddFundsModalOpen(true)}
+          userBalance={userData.balance}
         />
 
         <div className="flex-1 p-6">{renderCurrentPage()}</div>
       </main>
 
-      {tradeModalOpen && currentTradeStock && (
+      {tradeModalOpen && currentTradeArtist && (
         <TradeModal
-          stock={currentTradeStock}
+          artist={currentTradeArtist}
           userData={userData}
           onClose={() => setTradeModalOpen(false)}
           onExecuteTrade={executeTrade}
           loading={loading}
         />
       )}
+
+      {addFundsModalOpen && <AddFundsModal onClose={() => setAddFundsModalOpen(false)} />}
 
       {loading && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[2000] backdrop-blur-sm">

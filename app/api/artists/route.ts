@@ -1,21 +1,29 @@
 import { NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabase"
+import { db } from "@/lib/database"
 
 export async function GET() {
   try {
-    const { data: artists, error } = await supabaseAdmin
-      .from("artists")
-      .select("*")
-      .order("market_cap", { ascending: false })
+    const artists = await db.getAllArtists()
 
-    if (error) {
-      console.error("Error fetching artists:", error)
-      return NextResponse.json({ error: "Failed to fetch artists" }, { status: 500 })
-    }
-
-    return NextResponse.json({ artists })
+    return NextResponse.json({
+      artists: artists.map((artist) => ({
+        id: artist.id,
+        symbol: artist.symbol,
+        name: artist.name,
+        genre: artist.genre,
+        price: artist.current_price,
+        change: artist.price_change,
+        changePercent: artist.price_change_percent,
+        volume: artist.volume,
+        marketCap: artist.market_cap,
+        totalScrobbles: artist.total_scrobbles,
+        weeklyScrobbles: artist.weekly_scrobbles,
+        imageUrl: artist.image_url,
+        lastfmUrl: artist.lastfm_url,
+      })),
+    })
   } catch (error) {
-    console.error("Artists API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error fetching artists:", error)
+    return NextResponse.json({ error: "Failed to fetch artists" }, { status: 500 })
   }
 }

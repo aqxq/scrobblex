@@ -1,144 +1,68 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import type { Transaction } from "@/app/page"
+import { useState, useEffect } from "react"
+import { useAuth } from "./use-auth"
 
 interface UserData {
   balance: number
-  portfolio: Array<{
-    symbol: string
-    shares: number
-    avgPrice: number
-    addedDate: string
-  }>
-  transactions: Transaction[]
-  watchlist: string[]
-  achievements: any[]
-  joinDate: string
+  portfolio: any[]
+  watchlist: any[]
+  transactions: any[]
+  lastfmData?: any
 }
 
-const STORAGE_KEY = "scrobblex_user_data"
-
 export function useUserData() {
+  const { user } = useAuth()
   const [userData, setUserData] = useState<UserData>({
-    balance: 10000,
+    balance: 0,
     portfolio: [],
-    transactions: [],
     watchlist: [],
-    achievements: [],
-    joinDate: new Date().toISOString(),
+    transactions: [],
   })
+  const [loading, setLoading] = useState(true)
+
+  const fetchUserData = async () => {
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      const [portfolioRes, watchlistRes, transactionsRes, lastfmRes] = await Promise.all([
+        fetch("/api/user/portfolio"),
+        fetch("/api/user/watchlist"),
+        fetch("/api/user/transactions"),
+        fetch("/api/user/lastfm-data"),
+      ])
+
+      const [portfolio, watchlist, transactions, lastfmData] = await Promise.all([
+        portfolioRes.ok ? portfolioRes.json() : { positions: [] },
+        watchlistRes.ok ? watchlistRes.json() : { watchlist: [] },
+        transactionsRes.ok ? transactionsRes.json() : { transactions: [] },
+        lastfmRes.ok ? lastfmRes.json() : null,
+      ])
+
+      setUserData({
+        balance: user.balance,
+        portfolio: portfolio.positions || [],
+        watchlist: watchlist.watchlist || [],
+        transactions: transactions.transactions || [],
+        lastfmData,
+      })
+    } catch (error) {
+      console.error("Error fetching user data:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const parsedData = JSON.parse(saved)
-        setUserData(parsedData)
-      }
-    } catch (error) {
-      console.error("Failed to load user data:", error)
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData))
-    } catch (error) {
-      console.error("Failed to save user data:", error)
-    }
-  }, [userData])
-
-  const updateBalance = useCallback((newBalance: number) => {
-    setUserData((prev) => ({
-      ...prev,
-      balance: newBalance,
-    }))
-  }, [])
-
-  const addToPortfolio = useCallback((symbol: string, shares: number, price: number) => {
-    setUserData((prev) => {
-      const existing = prev.portfolio.find((item) => item.symbol === symbol)
-      let newPortfolio
-
-      if (existing) {
-        const totalShares = existing.shares + shares
-        const totalValue = existing.shares * existing.avgPrice + shares * price
-        newPortfolio = prev.portfolio.map((item) =>
-          item.symbol === symbol ? { ...item, shares: totalShares, avgPrice: totalValue / totalShares } : item,
-        )
-      } else {
-        newPortfolio = [
-          ...prev.portfolio,
-          {
-            symbol,
-            shares,
-            avgPrice: price,
-            addedDate: new Date().toISOString(),
-          },
-        ]
-      }
-
-      return {
-        ...prev,
-        portfolio: newPortfolio,
-      }
-    })
-  }, [])
-
-  const removeFromPortfolio = useCallback((symbol: string, shares: number) => {
-    setUserData((prev) => {
-      const existing = prev.portfolio.find((item) => item.symbol === symbol)
-      if (!existing) return prev
-
-      let newPortfolio
-      if (existing.shares <= shares) {
-        newPortfolio = prev.portfolio.filter((item) => item.symbol !== symbol)
-      } else {
-        newPortfolio = prev.portfolio.map((item) =>
-          item.symbol === symbol ? { ...item, shares: item.shares - shares } : item,
-        )
-      }
-
-      return {
-        ...prev,
-        portfolio: newPortfolio,
-      }
-    })
-  }, [])
-
-  const addTransaction = useCallback((transaction: Transaction) => {
-    setUserData((prev) => ({
-      ...prev,
-      transactions: [transaction, ...prev.transactions],
-    }))
-  }, [])
-
-  const addToWatchlist = useCallback((symbol: string) => {
-    setUserData((prev) => {
-      if (prev.watchlist.includes(symbol)) return prev
-
-      return {
-        ...prev,
-        watchlist: [...prev.watchlist, symbol],
-      }
-    })
-  }, [])
-
-  const removeFromWatchlist = useCallback((symbol: string) => {
-    setUserData((prev) => ({
-      ...prev,
-      watchlist: prev.watchlist.filter((s) => s !== symbol),
-    }))
-  }, [])
+    fetchUserData()
+  }, [user])
 
   return {
     userData,
-    updateBalance,
-    addToPortfolio,
-    removeFromPortfolio,
-    addTransaction,
-    addToWatchlist,
-    removeFromWatchlist,
+    loading,
+    refetch: fetchUserData,
   }
 }

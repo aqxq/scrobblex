@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { artistName, shares, price, type } = await request.json()
+    const { artistId, shares, price, type } = await request.json()
 
-    if (!artistName || !shares || !price || !type) {
+    if (!artistId || !shares || !price || !type) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
@@ -33,16 +33,17 @@ export async function POST(request: NextRequest) {
 
       await db.updateUser(session.userId, { balance: user.balance - total })
 
-      const existingPosition = await db.getPosition(session.userId, artistName)
+      const existingPosition = await db.getPosition(session.userId, artistId)
       if (existingPosition) {
         const newShares = existingPosition.shares + shares
-        const newAveragePrice = (existingPosition.shares * existingPosition.average_price + total) / newShares
-        await db.updatePosition(session.userId, artistName, newShares, newAveragePrice)
+        const newTotalInvested = existingPosition.total_invested + total
+        const newAveragePrice = newTotalInvested / newShares
+        await db.updatePosition(session.userId, artistId, newShares, newAveragePrice, newTotalInvested)
       } else {
-        await db.updatePosition(session.userId, artistName, shares, price)
+        await db.updatePosition(session.userId, artistId, shares, price, total)
       }
     } else {
-      const position = await db.getPosition(session.userId, artistName)
+      const position = await db.getPosition(session.userId, artistId)
       if (!position || position.shares < shares) {
         return NextResponse.json({ error: "Insufficient shares" }, { status: 400 })
       }
@@ -50,25 +51,28 @@ export async function POST(request: NextRequest) {
       await db.updateUser(session.userId, { balance: user.balance + total })
 
       const newShares = position.shares - shares
+      const newTotalInvested = Math.max(0, position.total_invested - shares * position.average_price)
+
       if (newShares === 0) {
-        await db.updatePosition(session.userId, artistName, 0, 0)
+        await db.updatePosition(session.userId, artistId, 0, 0, 0)
       } else {
-        await db.updatePosition(session.userId, artistName, newShares, position.average_price)
+        await db.updatePosition(session.userId, artistId, newShares, position.average_price, newTotalInvested)
       }
     }
 
     await db.createTransaction({
       user_id: session.userId,
-      artist_name: artistName,
+      artist_id: artistId,
       type,
       shares,
       price,
       total,
     })
 
+    const artist = await db.getArtistBySymbol(artistId)
     return NextResponse.json({
       success: true,
-      message: `Successfully ${type === "buy" ? "bought" : "sold"} ${shares} shares of ${artistName}`,
+      message: `Successfully ${type === "buy" ? "bought" : "sold"} ${shares} shares of ${artist?.name || artistId}`,
     })
   } catch (error) {
     console.error("Trade error:", error)

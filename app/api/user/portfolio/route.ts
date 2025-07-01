@@ -1,93 +1,36 @@
-import { type NextRequest, NextResponse } from "next/server"
-import jwt from "jsonwebtoken"
-import { supabaseAdmin } from "@/lib/supabase"
+import { NextResponse } from "next/server"
+import { getSession } from "@/lib/auth"
+import { db } from "@/lib/database"
 
-const JWT_SECRET = process.env.JWT_SECRET!
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const token = request.cookies.get("auth-token")?.value
-
-    if (!token) {
+    const session = await getSession()
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as any
-    const { data: user, error: userError } = await supabaseAdmin
-      .from("users")
-      .select("*")
-      .eq("id", decoded.userId)
-      .single()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
-    }
-
-    const { data: positions, error: positionsError } = await supabaseAdmin
-      .from("positions")
-      .select(`
-        *,
-        artist:artists(*)
-      `)
-      .eq("user_id", user.id)
-
-    if (positionsError) {
-      console.error("Error fetching positions:", positionsError)
-      return NextResponse.json({ error: "Failed to fetch portfolio" }, { status: 500 })
-    }
-
-    const totalValue =
-      positions?.reduce((sum, position) => {
-        return sum + position.shares * position.artist.current_price
-      }, 0) || 0
-
-    const totalInvested =
-      positions?.reduce((sum, position) => {
-        return sum + position.total_invested
-      }, 0) || 0
-
-    const gainLoss = totalValue - totalInvested
-    const gainLossPercent = totalInvested > 0 ? (gainLoss / totalInvested) * 100 : 0
+    const positions = await db.getUserPositions(session.userId)
 
     return NextResponse.json({
-      user: {
-        id: user.id,
-        displayName: user.display_name,
-        lastfmUsername: user.lastfm_username,
-        lastfmVerified: user.lastfm_verified,
-        balance: user.balance,
-        scrobbleCoins: user.scrobble_coins,
-        totalScrobbles: user.total_scrobbles,
-        profileImageUrl: user.profile_image_url,
-        isAdmin: user.is_admin,
-      },
-      portfolio: {
-        totalValue,
-        totalInvested,
-        gainLoss,
-        gainLossPercent,
-        cashBalance: user.balance,
-        totalAssets: totalValue + user.balance,
-        positions:
-          positions?.map((position) => ({
-            artistName: position.artist.name,
-            shares: position.shares,
-            averagePrice: position.average_price,
-            currentPrice: position.artist.current_price,
-            totalValue: position.shares * position.artist.current_price,
-            gainLoss: position.shares * position.artist.current_price - position.total_invested,
-            gainLossPercent:
-              position.total_invested > 0
-                ? ((position.shares * position.artist.current_price - position.total_invested) /
-                    position.total_invested) *
-                  100
-                : 0,
-            artistImage: position.artist.image_url,
-          })) || [],
-      },
+      positions: positions.map((pos) => ({
+        id: pos.id,
+        artistId: pos.artist_id,
+        symbol: pos.artist.symbol,
+        name: pos.artist.name,
+        shares: pos.shares,
+        averagePrice: pos.average_price,
+        totalInvested: pos.total_invested,
+        currentPrice: pos.artist.current_price,
+        currentValue: pos.shares * pos.artist.current_price,
+        gainLoss: pos.shares * pos.artist.current_price - pos.total_invested,
+        gainLossPercent:
+          pos.total_invested > 0
+            ? ((pos.shares * pos.artist.current_price - pos.total_invested) / pos.total_invested) * 100
+            : 0,
+      })),
     })
   } catch (error) {
-    console.error("Portfolio API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error fetching portfolio:", error)
+    return NextResponse.json({ error: "Failed to fetch portfolio" }, { status: 500 })
   }
 }

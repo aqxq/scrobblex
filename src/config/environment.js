@@ -14,6 +14,6 @@ export const config = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   LASTFM_API_KEY: process.env.LASTFM_API_KEY,
   LASTFM_API_SECRET: process.env.LASTFM_API_SECRET,
-  LASTFM_CALLBACK_URL: process.env.BACKEND_URL,
+  LASTFM_CALLBACK_URL: `${process.env.BACKEND_URL}/api/auth/lastfm/callback`,
   LOG_LEVEL: process.env.LOG_LEVEL || "info",
 }

@@ -1,42 +1,43 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { verifyJWT } from "@/lib/auth"
+
+const publicPaths = ["/login", "/api/auth/lastfm/start", "/api/auth/lastfm/callback"]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (
-    pathname.startsWith("/api/") ||
-    pathname.startsWith("/_next/") ||
-    pathname.startsWith("/favicon.ico") ||
-    pathname === "/login"
-  ) {
+  if (publicPaths.some((path) => pathname.startsWith(path))) {
     return NextResponse.next()
   }
 
   const token = request.cookies.get("auth-token")?.value
 
   if (!token) {
-    console.log("No auth token found, redirecting to login")
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  const user = verifyJWT(token)
-
-  if (!user) {
-    console.log("Invalid auth token, redirecting to login")
+  const payload = verifyJWT(token)
+  if (!payload) {
     const response = NextResponse.redirect(new URL("/login", request.url))
     response.cookies.delete("auth-token")
     return response
   }
 
-  if (pathname === "/login") {
-    return NextResponse.redirect(new URL("/", request.url))
+  if (pathname.startsWith("/api/")) {
+    const requestHeaders = new Headers(request.headers)
+    requestHeaders.set("x-user-id", payload.userId)
+    requestHeaders.set("x-user-email", payload.email)
+
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 }
